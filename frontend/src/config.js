@@ -11,3 +11,5 @@ export const API = {
 }
 
 export const TOKEN_KEY = 'kirana_token'
+export const USER_KEY  = 'kirana_user'
+export const CART_KEY  = 'kirana_cart'

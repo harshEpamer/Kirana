@@ -13,8 +13,8 @@ export default function LoginPage() {
     e.preventDefault()
     setError('')
     try {
-      await login(phone, password)
-      navigate('/catalog')
+      const userObj = await login(phone, password)
+      navigate(userObj?.role === 'admin' ? '/admin' : '/catalog')
     } catch (err) {
       setError(err.message)
     }

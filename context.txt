@@ -59,7 +59,8 @@ kirana-store/
 ├── docs/
 │   └── architecture.md      → Service diagram, data flow, API contract overview
 ├── scripts/
-│   ├── init-db.py           → Run once to initialize kirana.db from schema.sql
+│   ├── init-db.py           → Creates kirana.db from schema.sql (run first)
+│   ├── seed-data.py         → Populates all tables with realistic demo data (run second)
 │   └── start-all.ps1        → PowerShell script to start all 8 services in parallel
 ├── requirements.txt         → Root-level combined Python dependencies
 ├── context.txt              → This file — read by all agents before building
@@ -83,8 +84,36 @@ kirana-store/
 - Single SQLite file: `kirana.db` at project root
 - All services connect via `DATABASE_URL = "sqlite:///../../kirana.db"` (relative from service folder)
 - Tables: users, products, sales, sale_items, purchase_history, coupons, stock_adjustments
-- Schema + seed data: db/schema.sql
-- Initialize: `python scripts/init-db.py`
+- Schema DDL + base seed: db/schema.sql
+- Full demo data: scripts/seed-data.py
+- kirana.db is in .gitignore — NOT committed. Every clone must run the setup below.
+
+### First-Time Database Setup (required after every fresh clone)
+```bash
+python scripts/init-db.py        # Creates kirana.db + tables + 10 products + 3 coupons
+python scripts/seed-data.py       # Populates all tables with realistic demo data
+```
+
+### Seed Data Summary
+| Table             | Rows | Notes                                          |
+|-------------------|------|-------------------------------------------------|
+| users             | 6    | 1 admin (phone: 9999900001) + 5 customers       |
+| products          | 25   | 10 from schema + 15 added by seed script        |
+| coupons           | 6    | SAVE10, FLAT50, RICE20, WELCOME25, DAIRY15, NEWYEAR100 |
+| sales             | 12   | Spread over last 7 days, random customers       |
+| sale_items        | 37   | 2-4 items per sale                              |
+| purchase_history  | 12   | One entry per sale                              |
+| stock_adjustments | 62   | 25 initial 'set' + 37 'sale_deduct'             |
+
+### Login Credentials (all passwords: kirana123)
+| Role     | Name               | Phone       |
+|----------|--------------------|-------------|
+| Admin    | Pranav Suraparaju  | 9999900001  |
+| Customer | Rajesh Kumar       | 9876543210  |
+| Customer | Priya Sharma       | 9876543211  |
+| Customer | Amit Patel         | 9876543212  |
+| Customer | Sneha Reddy        | 9876543213  |
+| Customer | Vikram Singh       | 9876543214  |
 
 ## Non-Functional Requirements
 - CORS: all services allow origin http://localhost:5173
