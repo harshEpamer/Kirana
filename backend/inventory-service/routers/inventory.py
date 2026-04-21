@@ -5,16 +5,60 @@ from datetime import datetime
 
 from database import get_db
 from models import Product, StockAdjustment
-from schemas import ProductCreate, ProductUpdate, ProductOut, StockAdjustRequest, StockAdjustOut
+from schemas import (
+    ProductCreate, ProductUpdate, ProductOut,
+    StockAdjustRequest, StockAdjustOut,
+    BulkCreateResponse, ReorderItem,
+)
 
 router = APIRouter(prefix="/inventory", tags=["inventory"])
 
 
+# ── List all products ───────────────────────────────────────────────────────
 @router.get("/products", response_model=List[ProductOut])
 def list_products(db: Session = Depends(get_db)):
     return db.query(Product).all()
 
 
+# ── Low-stock items (MUST be before /{product_id}) ─────────────────────────
+@router.get("/low-stock", response_model=List[ProductOut])
+def low_stock(db: Session = Depends(get_db)):
+    return db.query(Product).filter(Product.stock_qty < Product.reorder_threshold).all()
+
+
+# ── Reorder suggestions (MUST be before /{product_id}) ─────────────────────
+@router.get("/reorder", response_model=List[ReorderItem])
+def reorder_list(db: Session = Depends(get_db)):
+    items = db.query(Product).filter(Product.stock_qty < Product.reorder_threshold).all()
+    return [
+        ReorderItem(
+            product_id=p.id,
+            name=p.name,
+            category=p.category,
+            stock_qty=p.stock_qty,
+            reorder_threshold=p.reorder_threshold,
+            suggested_qty=p.reorder_threshold * 2 - p.stock_qty,
+        )
+        for p in items
+    ]
+
+
+# ── Bulk insert (MUST be before /{product_id}) ─────────────────────────────
+@router.post("/products/bulk", response_model=BulkCreateResponse, status_code=201)
+def bulk_create(products_in: List[ProductCreate], db: Session = Depends(get_db)):
+    created = []
+    for p_in in products_in:
+        product = Product(**p_in.model_dump(), created_at=datetime.utcnow().isoformat())
+        db.add(product)
+        db.flush()
+        created.append(product)
+    db.commit()
+    for p in created:
+        db.refresh(p)
+    return BulkCreateResponse(created=len(created), products=created)
+
+
+# ── Single product by ID ───────────────────────────────────────────────────
 @router.get("/products/{product_id}", response_model=ProductOut)
 def get_product(product_id: int, db: Session = Depends(get_db)):
     product = db.query(Product).filter(Product.id == product_id).first()
