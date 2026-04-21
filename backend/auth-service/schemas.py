@@ -2,7 +2,7 @@ from pydantic import BaseModel
 from typing import Optional
 
 
-class UserCreate(BaseModel):
+class UserRegister(BaseModel):
     name: str
     phone: str
     address: str
@@ -14,9 +14,12 @@ class UserLogin(BaseModel):
     password: str
 
 
-class Token(BaseModel):
+class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
+    user_id: int
+    name: str
+    role: str = "customer"
 
 
 class UserOut(BaseModel):

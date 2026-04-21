@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext'
 import { useCart } from '../context/CartContext'
 
 export default function Navbar() {
-  const { token, logout } = useAuth()
+  const { user, token, logout } = useAuth()
   const { items } = useCart()
   const cartCount = items.reduce((s, i) => s + i.quantity, 0)
 
@@ -22,10 +22,15 @@ export default function Navbar() {
             </span>
           )}
         </Link>
+        {token && <Link to="/checkout" className="hover:text-green-200">Checkout</Link>}
+        {token && <Link to="/history" className="hover:text-green-200">Orders</Link>}
         <Link to="/admin" className="hover:text-green-200">Admin</Link>
         <Link to="/inventory" className="hover:text-green-200">Inventory</Link>
         {token ? (
-          <button onClick={logout} className="hover:text-green-200">Logout</button>
+          <span className="flex items-center gap-3">
+            {user && <span className="text-green-200 text-xs">{user.name}</span>}
+            <button onClick={logout} className="hover:text-green-200">Logout</button>
+          </span>
         ) : (
           <Link to="/login" className="hover:text-green-200">Login</Link>
         )}

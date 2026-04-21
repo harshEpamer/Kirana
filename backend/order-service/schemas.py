@@ -2,32 +2,20 @@ from pydantic import BaseModel
 from typing import List, Optional
 
 
-class OrderItemIn(BaseModel):
+class CartItem(BaseModel):
     product_id: int
     quantity: int
 
 
-class OrderCreate(BaseModel):
-    user_id: Optional[int] = None
-    items: List[OrderItemIn]
+class CheckoutRequest(BaseModel):
+    user_id: int
+    cart: List[CartItem]
     coupon_code: Optional[str] = None
 
 
-class OrderItemOut(BaseModel):
-    product_id: int
-    quantity: int
-    unit_price: float
-
-    class Config:
-        from_attributes = True
-
-
-class OrderOut(BaseModel):
-    sale_id: int
-    user_id: Optional[int]
+class CheckoutResponse(BaseModel):
+    order_id: int
     total_amount: float
     discount_amount: float
     final_amount: float
-    coupon_code: Optional[str]
-    sale_time: Optional[str]
-    items: List[OrderItemOut] = []
+    coupon_applied: Optional[str] = None
