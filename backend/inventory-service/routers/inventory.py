@@ -9,16 +9,55 @@ from schemas import (
     ProductCreate, ProductUpdate, ProductOut,
     StockAdjustRequest, StockAdjustOut, StockPatchRequest,
     BulkImportRequest, BulkImportResponse, StockLogEntry,
+    ReorderItem,
 )
 
 router = APIRouter(prefix="/inventory", tags=["inventory"])
 
 
+# ── List all products ───────────────────────────────────────────────────────
 @router.get("/products", response_model=List[ProductOut])
 def list_products(db: Session = Depends(get_db)):
     return db.query(Product).all()
 
 
+# ── Low-stock items (MUST be before /{product_id}) ─────────────────────────
+@router.get("/low-stock", response_model=List[ProductOut])
+def low_stock(db: Session = Depends(get_db)):
+    return db.query(Product).filter(Product.stock_qty < Product.reorder_threshold).all()
+
+
+# ── Reorder suggestions (MUST be before /{product_id}) ─────────────────────
+@router.get("/reorder", response_model=List[ReorderItem])
+def reorder_list(db: Session = Depends(get_db)):
+    items = db.query(Product).filter(Product.stock_qty < Product.reorder_threshold).all()
+    return [
+        ReorderItem(
+            product_id=p.id,
+            name=p.name,
+            category=p.category,
+            stock_qty=p.stock_qty,
+            reorder_threshold=p.reorder_threshold,
+            suggested_qty=p.reorder_threshold * 2 - p.stock_qty,
+        )
+        for p in items
+    ]
+
+
+# ── Bulk insert (MUST be before /{product_id}) ─────────────────────────────
+@router.post("/products/bulk", response_model=BulkImportResponse, status_code=201)
+def bulk_import_products(req: BulkImportRequest, db: Session = Depends(get_db)):
+    now = datetime.utcnow().isoformat()
+    count = 0
+    for item in req.products:
+        product = Product(**item.model_dump(), created_at=now)
+        db.add(product)
+        count += 1
+    db.commit()
+    return BulkImportResponse(inserted=count)
+
+
+# ── Single product by ID ───────────────────────────────────────────────────
 @router.get("/products/{product_id}", response_model=ProductOut)
 def get_product(product_id: int, db: Session = Depends(get_db)):
     product = db.query(Product).filter(Product.id == product_id).first()
@@ -55,18 +94,6 @@ def delete_product(product_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Product not found")
     db.delete(product)
     db.commit()
-
-
-@router.post("/products/bulk", response_model=BulkImportResponse, status_code=201)
-def bulk_import_products(req: BulkImportRequest, db: Session = Depends(get_db)):
-    now = datetime.utcnow().isoformat()
-    count = 0
-    for item in req.products:
-        product = Product(**item.model_dump(), created_at=now)
-        db.add(product)
-        count += 1
-    db.commit()
-    return BulkImportResponse(inserted=count)
 
 
 def _apply_adjustment(product: Product, adjustment_type: str, quantity: int) -> None:

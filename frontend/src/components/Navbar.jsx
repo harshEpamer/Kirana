@@ -25,8 +25,9 @@ export default function Navbar() {
         <div className="flex gap-5 items-center text-sm font-medium">
           {token && !isAdmin && (
             <>
-              <Link to="/catalog" className="hover:text-green-200">Catalog</Link>
-              <Link to="/history" className="hover:text-green-200">My Orders</Link>
+              <Link to="/catalog"  className="hover:text-green-200">Catalog</Link>
+              <Link to="/checkout" className="hover:text-green-200">Checkout</Link>
+              <Link to="/history"  className="hover:text-green-200">My Orders</Link>
               <button
                 onClick={() => setDrawerOpen(true)}
                 className="hover:text-green-200 relative"
@@ -72,3 +73,4 @@ export default function Navbar() {
     </>
   )
 }
+

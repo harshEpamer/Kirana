@@ -72,3 +72,19 @@ class StockLogEntry(BaseModel):
     quantity: int
     adjusted_at: Optional[str]
 
+
+class BulkCreateResponse(BaseModel):
+    created: int
+    products: List[ProductOut]
+
+
+class ReorderItem(BaseModel):
+    product_id: int
+    name: str
+    category: str
+    stock_qty: int
+    reorder_threshold: int
+    suggested_qty: int
+
+    class Config:
+        from_attributes = True

@@ -3,6 +3,14 @@ import { API, TOKEN_KEY, USER_KEY } from '../config'
 
 const AuthContext = createContext(null)
 
+function decodeToken(token) {
+  try {
+    return JSON.parse(atob(token.split('.')[1]))
+  } catch {
+    return null
+  }
+}
+
 export function AuthProvider({ children }) {
   const [token, setToken] = useState(() => localStorage.getItem(TOKEN_KEY))
   const [user, setUser]   = useState(() => {
@@ -13,6 +21,18 @@ export function AuthProvider({ children }) {
       return null
     }
   })
+
+  // Expire stale tokens on mount
+  useEffect(() => {
+    if (!token) return
+    const payload = decodeToken(token)
+    if (!payload || payload.exp * 1000 <= Date.now()) {
+      localStorage.removeItem(TOKEN_KEY)
+      localStorage.removeItem(USER_KEY)
+      setToken(null)
+      setUser(null)
+    }
+  }, [])
 
   const login = async (phone, password) => {
     const res = await fetch(`${API.auth}/auth/login`, {
@@ -62,3 +82,4 @@ export function AuthProvider({ children }) {
 }
 
 export const useAuth = () => useContext(AuthContext)
+

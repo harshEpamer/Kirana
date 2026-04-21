@@ -7,7 +7,8 @@ import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
 import CatalogPage from './pages/CatalogPage'
 import CartPage from './pages/CartPage'
-import PurchaseHistoryPage from './pages/PurchaseHistoryPage'
+import Checkout from './pages/Checkout'
+import PurchaseHistory from './pages/PurchaseHistory'
 import AdminDashboard from './pages/AdminDashboard'
 import InventoryPage from './pages/InventoryPage'
 import AdminStockUpdatePage from './pages/AdminStockUpdatePage'
@@ -29,9 +30,10 @@ function App() {
               <Route path="/register" element={<RegisterPage />} />
 
               {/* User (any logged-in user) */}
-              <Route path="/catalog" element={<CatalogPage />} />
-              <Route path="/cart"    element={<AuthGuard><CartPage /></AuthGuard>} />
-              <Route path="/history" element={<AuthGuard><PurchaseHistoryPage /></AuthGuard>} />
+              <Route path="/catalog"  element={<CatalogPage />} />
+              <Route path="/cart"     element={<AuthGuard><CartPage /></AuthGuard>} />
+              <Route path="/checkout" element={<AuthGuard><Checkout /></AuthGuard>} />
+              <Route path="/history"  element={<AuthGuard><PurchaseHistory /></AuthGuard>} />
 
               {/* Admin-only */}
               <Route path="/admin"            element={<AuthGuard adminOnly><AdminDashboard /></AuthGuard>} />
