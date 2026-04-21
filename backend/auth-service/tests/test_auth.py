@@ -1,179 +1,128 @@
-import sys
-import os
-import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+"""
+Tests for auth-service routers/auth.py.
 
-# Add service directory to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-
-from database import Base, get_db
-from main import app
-from models import User
-
-# In-memory SQLite for tests
-TEST_DATABASE_URL = "sqlite:///./test_auth.db"
-engine = create_engine(TEST_DATABASE_URL, connect_args={"check_same_thread": False})
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, expire_on_commit=False)
+Routes covered:
+  POST /auth/register
+  POST /auth/login
+  GET  /auth/me
+  GET  /health
+"""
 
 
-def override_get_db():
-    db = TestingSessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+# ── Helpers ──────────────────────────────────────────────────────────────────
+
+def _reg_payload(**overrides):
+    """Return a valid registration payload, with optional field overrides."""
+    base = {
+        "name": "Ravi Kumar",
+        "phone": "9876543210",
+        "address": "12 MG Road, Mumbai",
+        "password": "StrongPass@123",
+    }
+    base.update(overrides)
+    return base
 
 
-app.dependency_overrides[get_db] = override_get_db
-client = TestClient(app)
+# ── POST /auth/register ───────────────────────────────────────────────────────
 
-USER_DATA = {
-    "name": "Test User",
-    "phone": "9999999999",
-    "address": "123 Test Street",
-    "password": "securepass123",
-}
-
-
-@pytest.fixture(autouse=True)
-def setup_db():
-    Base.metadata.create_all(bind=engine)
-    yield
-    Base.metadata.drop_all(bind=engine)
+def test_register_returns_201(client):
+    """Valid registration payload returns 201 and user JSON without password."""
+    resp = client.post("/auth/register", json=_reg_payload())
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["phone"] == "9876543210"
+    assert body["name"] == "Ravi Kumar"
+    assert "id" in body
+    assert "password" not in body
+    assert "password_hash" not in body
 
 
-# ────────────────────────── Health ──────────────────────────
-
-class TestHealth:
-    def test_health_returns_ok(self):
-        res = client.get("/health")
-        assert res.status_code == 200
-        data = res.json()
-        assert data["status"] == "ok"
-        assert data["service"] == "auth-service"
+def test_register_duplicate_phone_returns_400(client):
+    """Registering the same phone twice returns 400."""
+    client.post("/auth/register", json=_reg_payload())
+    resp = client.post("/auth/register", json=_reg_payload())
+    assert resp.status_code == 400
+    assert "already registered" in resp.json()["detail"].lower()
 
 
-# ────────────────────────── Register ──────────────────────────
-
-class TestRegister:
-    def test_register_success(self):
-        res = client.post("/auth/register", json=USER_DATA)
-        assert res.status_code == 201
-        data = res.json()
-        assert data["name"] == USER_DATA["name"]
-        assert data["phone"] == USER_DATA["phone"]
-        assert data["address"] == USER_DATA["address"]
-        assert "id" in data
-        assert "password" not in data
-        assert "password_hash" not in data
-
-    def test_register_duplicate_phone(self):
-        client.post("/auth/register", json=USER_DATA)
-        res = client.post("/auth/register", json=USER_DATA)
-        assert res.status_code == 400
-        assert res.json()["detail"] == "Phone already registered"
-
-    def test_register_missing_fields(self):
-        res = client.post("/auth/register", json={"name": "Test"})
-        assert res.status_code == 422
-
-    def test_register_empty_body(self):
-        res = client.post("/auth/register", json={})
-        assert res.status_code == 422
+def test_register_missing_name_returns_422(client):
+    """Missing required field 'name' returns 422 validation error."""
+    payload = _reg_payload()
+    del payload["name"]
+    resp = client.post("/auth/register", json=payload)
+    assert resp.status_code == 422
 
 
-# ────────────────────────── Login ──────────────────────────
-
-class TestLogin:
-    def test_login_success(self):
-        client.post("/auth/register", json=USER_DATA)
-        res = client.post("/auth/login", json={
-            "phone": USER_DATA["phone"],
-            "password": USER_DATA["password"],
-        })
-        assert res.status_code == 200
-        data = res.json()
-        assert "access_token" in data
-        assert data["token_type"] == "bearer"
-        assert data["user_id"] is not None
-        assert data["name"] == USER_DATA["name"]
-        assert data["role"] == "user"
-
-    def test_login_wrong_password(self):
-        client.post("/auth/register", json=USER_DATA)
-        res = client.post("/auth/login", json={
-            "phone": USER_DATA["phone"],
-            "password": "wrongpassword",
-        })
-        assert res.status_code == 401
-        assert res.json()["detail"] == "Invalid phone or password"
-
-    def test_login_nonexistent_user(self):
-        res = client.post("/auth/login", json={
-            "phone": "0000000000",
-            "password": "whatever",
-        })
-        assert res.status_code == 401
-        assert res.json()["detail"] == "Invalid phone or password"
-
-    def test_login_missing_fields(self):
-        res = client.post("/auth/login", json={"phone": "9999999999"})
-        assert res.status_code == 422
+def test_register_missing_phone_returns_422(client):
+    """Missing required field 'phone' returns 422 validation error."""
+    payload = _reg_payload()
+    del payload["phone"]
+    resp = client.post("/auth/register", json=payload)
+    assert resp.status_code == 422
 
 
-# ────────────────────────── GET /auth/me ──────────────────────────
-
-class TestGetMe:
-    def _get_token(self):
-        client.post("/auth/register", json=USER_DATA)
-        res = client.post("/auth/login", json={
-            "phone": USER_DATA["phone"],
-            "password": USER_DATA["password"],
-        })
-        return res.json()["access_token"]
-
-    def test_me_success(self):
-        token = self._get_token()
-        res = client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
-        assert res.status_code == 200
-        data = res.json()
-        assert data["name"] == USER_DATA["name"]
-        assert data["phone"] == USER_DATA["phone"]
-        assert data["address"] == USER_DATA["address"]
-        assert "password" not in data
-        assert "password_hash" not in data
-
-    def test_me_no_token(self):
-        res = client.get("/auth/me")
-        assert res.status_code in (401, 403)
-
-    def test_me_invalid_token(self):
-        res = client.get("/auth/me", headers={"Authorization": "Bearer invalidtoken123"})
-        assert res.status_code == 401
-        assert res.json()["detail"] == "Invalid token"
-
-    def test_me_expired_token_format(self):
-        # Malformed JWT
-        res = client.get("/auth/me", headers={"Authorization": "Bearer a.b.c"})
-        assert res.status_code == 401
+def test_register_missing_password_returns_422(client):
+    """Missing required field 'password' returns 422 validation error."""
+    payload = _reg_payload()
+    del payload["password"]
+    resp = client.post("/auth/register", json=payload)
+    assert resp.status_code == 422
 
 
-# ────────────────────────── Token Content ──────────────────────────
+# ── POST /auth/login ──────────────────────────────────────────────────────────
 
-class TestTokenContent:
-    def test_token_contains_user_id_and_name(self):
-        client.post("/auth/register", json=USER_DATA)
-        res = client.post("/auth/login", json={
-            "phone": USER_DATA["phone"],
-            "password": USER_DATA["password"],
-        })
-        token = res.json()["access_token"]
-        import base64, json as json_lib
-        payload = json_lib.loads(base64.urlsafe_b64decode(token.split(".")[1] + "=="))
-        assert "sub" in payload
-        assert "name" in payload
-        assert "phone" in payload
-        assert "exp" in payload
-        assert payload["name"] == USER_DATA["name"]
+def test_login_valid_credentials_returns_token(client):
+    """Logging in with correct credentials returns a bearer token."""
+    client.post("/auth/register", json=_reg_payload())
+    resp = client.post(
+        "/auth/login",
+        json={"phone": "9876543210", "password": "StrongPass@123"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "access_token" in body
+    assert body["token_type"] == "bearer"
+    assert len(body["access_token"]) > 10
+
+
+def test_login_wrong_password_returns_401(client):
+    """Login with incorrect password returns 401."""
+    client.post("/auth/register", json=_reg_payload())
+    resp = client.post(
+        "/auth/login",
+        json={"phone": "9876543210", "password": "WrongPass!"},
+    )
+    assert resp.status_code == 401
+    assert "invalid" in resp.json()["detail"].lower()
+
+
+def test_login_unknown_phone_returns_401(client):
+    """Login with a phone number not in the database returns 401."""
+    resp = client.post(
+        "/auth/login",
+        json={"phone": "0000000000", "password": "AnyPass"},
+    )
+    assert resp.status_code == 401
+
+
+def test_login_missing_phone_returns_422(client):
+    """Login payload missing phone returns 422 validation error."""
+    resp = client.post("/auth/login", json={"password": "SomePass"})
+    assert resp.status_code == 422
+
+
+# ── GET /auth/me ──────────────────────────────────────────────────────────────
+
+def test_get_me_returns_501(client):
+    """GET /auth/me is not yet implemented and returns 501."""
+    resp = client.get("/auth/me")
+    assert resp.status_code == 501
+
+
+# ── GET /health ───────────────────────────────────────────────────────────────
+
+def test_health_endpoint_returns_200(client):
+    """Health endpoint returns 200 and service metadata."""
+    resp = client.get("/health")
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "ok"

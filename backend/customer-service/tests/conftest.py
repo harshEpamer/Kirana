@@ -1,5 +1,5 @@
 """
-Pytest configuration and fixtures for inventory-service.
+Pytest configuration and fixtures for customer-service.
 """
 import sys
 import os
@@ -27,6 +27,7 @@ _db_module.SessionLocal = _TestSessionLocal
 
 from main import app  # noqa: E402
 from database import get_db, Base  # noqa: E402
+from models import User, PurchaseHistory, Sale  # noqa: E402
 
 
 @pytest.fixture()
@@ -46,3 +47,42 @@ def client():
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()
+
+
+@pytest.fixture()
+def client_with_customer(client):
+    """Return (client, customer_id) with one user seeded."""
+    db = _TestSessionLocal()
+    user = User(name="Priya Sharma", phone="9000000001", address="1 Anna Salai")
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    uid = user.id
+    db.close()
+    return client, uid
+
+
+@pytest.fixture()
+def db_session():
+    """Yield a raw database session for direct data seeding in tests."""
+    db = _TestSessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+@pytest.fixture()
+def client_with_history(client_with_customer):
+    """Extend client_with_customer with a sale and purchase_history record."""
+    c, uid = client_with_customer
+    db = _TestSessionLocal()
+    sale = Sale(user_id=uid, final_amount=250.0, sale_time="2026-04-21T10:00:00")
+    db.add(sale)
+    db.commit()
+    db.refresh(sale)
+    ph = PurchaseHistory(user_id=uid, sale_id=sale.id)
+    db.add(ph)
+    db.commit()
+    db.close()
+    return c, uid

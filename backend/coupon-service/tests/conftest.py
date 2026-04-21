@@ -1,5 +1,5 @@
 """
-Pytest configuration and fixtures for inventory-service.
+Pytest configuration and fixtures for coupon-service.
 """
 import sys
 import os
@@ -27,6 +27,7 @@ _db_module.SessionLocal = _TestSessionLocal
 
 from main import app  # noqa: E402
 from database import get_db, Base  # noqa: E402
+from models import Coupon  # noqa: E402
 
 
 @pytest.fixture()
@@ -46,3 +47,18 @@ def client():
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()
+
+
+@pytest.fixture()
+def client_with_coupons(client):
+    """Return client with one order_wise and one product_wise coupon seeded."""
+    db = _TestSessionLocal()
+    db.add_all([
+        Coupon(code="SAVE10", discount_type="order_wise",
+               discount_value=10.0, product_id=None, is_active=1),
+        Coupon(code="RICE20", discount_type="product_wise",
+               discount_value=20.0, product_id=1, is_active=1),
+    ])
+    db.commit()
+    db.close()
+    return client

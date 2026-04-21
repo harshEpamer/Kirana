@@ -1,5 +1,5 @@
 """
-Pytest configuration and fixtures for inventory-service.
+Pytest configuration and fixtures for sales-service.
 """
 import sys
 import os
@@ -27,6 +27,7 @@ _db_module.SessionLocal = _TestSessionLocal
 
 from main import app  # noqa: E402
 from database import get_db, Base  # noqa: E402
+from models import Product  # noqa: E402
 
 
 @pytest.fixture()
@@ -46,3 +47,16 @@ def client():
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()
+
+
+@pytest.fixture()
+def client_with_product(client):
+    """Return (client, product_id) with one product pre-seeded (50 in stock)."""
+    db = _TestSessionLocal()
+    p = Product(name="Basmati Rice 1kg", price=85.0, stock_qty=50)
+    db.add(p)
+    db.commit()
+    db.refresh(p)
+    product_id = p.id
+    db.close()
+    return client, product_id

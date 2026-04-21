@@ -1,5 +1,5 @@
 """
-Pytest configuration and fixtures for inventory-service.
+Pytest configuration and fixtures for alert-service.
 """
 import sys
 import os
@@ -27,6 +27,7 @@ _db_module.SessionLocal = _TestSessionLocal
 
 from main import app  # noqa: E402
 from database import get_db, Base  # noqa: E402
+from models import Product  # noqa: E402
 
 
 @pytest.fixture()
@@ -46,3 +47,13 @@ def client():
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()
+
+
+@pytest.fixture()
+def db_session():
+    """Yield a raw database session for direct data seeding in tests."""
+    db = _TestSessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()

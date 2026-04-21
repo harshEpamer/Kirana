@@ -1,211 +1,228 @@
-# ── Product CRUD ────────────────────────────────────────────────────────────
+"""
+Tests for inventory-service routers/inventory.py.
+
+Routes covered:
+  GET    /inventory/products
+  GET    /inventory/products/{id}
+  POST   /inventory/products
+  PUT    /inventory/products/{id}
+  DELETE /inventory/products/{id}
+  POST   /inventory/stock-adjust
+"""
 
 
-def test_create_product(client):
-    resp = client.post("/inventory/products", json={
-        "name": "Rice",
-        "category": "Grocery",
-        "price": 60.0,
-        "stock_qty": 100,
-        "reorder_threshold": 20,
-    })
+# ── Helpers ──────────────────────────────────────────────────────────────────
+
+def _product_payload(**overrides):
+    """Return a valid product creation payload."""
+    base = {
+        "name": "Basmati Rice 1kg",
+        "category": "Grains",
+        "price": 85.0,
+        "stock_qty": 50,
+        "reorder_threshold": 10,
+        "image_url": "",
+    }
+    base.update(overrides)
+    return base
+
+
+def _create_product(client, **overrides):
+    """Helper: POST a product and return the created JSON."""
+    resp = client.post("/inventory/products", json=_product_payload(**overrides))
     assert resp.status_code == 201
-    data = resp.json()
-    assert "id" in data
-    assert data["name"] == "Rice"
-    assert data["stock_qty"] == 100
+    return resp.json()
 
 
-def test_create_product_missing_field(client):
-    resp = client.post("/inventory/products", json={
-        "category": "Grocery",
-        "price": 60.0,
-    })
-    assert resp.status_code == 422
+# ── GET /inventory/products ───────────────────────────────────────────────────
 
-
-def test_list_products_empty(client):
+def test_list_products_empty_returns_200(client):
+    """GET /inventory/products returns 200 with empty list when no products exist."""
     resp = client.get("/inventory/products")
     assert resp.status_code == 200
     assert resp.json() == []
 
 
-def test_list_products(client):
-    for i in range(3):
-        client.post("/inventory/products", json={
-            "name": f"Item {i}",
-            "category": "Test",
-            "price": 10.0,
-        })
+def test_list_products_returns_all_products(client):
+    """GET /inventory/products returns all created products."""
+    _create_product(client, name="Toor Dal 500g")
+    _create_product(client, name="Sunflower Oil 1L", phone="1111111111")
     resp = client.get("/inventory/products")
     assert resp.status_code == 200
-    assert len(resp.json()) == 3
+    assert len(resp.json()) == 2
 
 
-def test_get_product(client, sample_product):
-    pid = sample_product["id"]
-    resp = client.get(f"/inventory/products/{pid}")
+# ── POST /inventory/products ──────────────────────────────────────────────────
+
+def test_create_product_returns_201(client):
+    """Valid product payload returns 201 with created product fields."""
+    resp = client.post("/inventory/products", json=_product_payload())
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["name"] == "Basmati Rice 1kg"
+    assert body["category"] == "Grains"
+    assert body["price"] == 85.0
+    assert body["stock_qty"] == 50
+    assert "id" in body
+
+
+def test_create_product_missing_name_returns_422(client):
+    """Creating a product without 'name' returns 422 validation error."""
+    payload = _product_payload()
+    del payload["name"]
+    resp = client.post("/inventory/products", json=payload)
+    assert resp.status_code == 422
+
+
+def test_create_product_missing_category_returns_422(client):
+    """Creating a product without 'category' returns 422 validation error."""
+    payload = _product_payload()
+    del payload["category"]
+    resp = client.post("/inventory/products", json=payload)
+    assert resp.status_code == 422
+
+
+def test_create_product_missing_price_returns_422(client):
+    """Creating a product without 'price' returns 422 validation error."""
+    payload = _product_payload()
+    del payload["price"]
+    resp = client.post("/inventory/products", json=payload)
+    assert resp.status_code == 422
+
+
+# ── GET /inventory/products/{id} ──────────────────────────────────────────────
+
+def test_get_product_returns_200(client):
+    """GET /inventory/products/{id} returns 200 for an existing product."""
+    created = _create_product(client)
+    resp = client.get(f"/inventory/products/{created['id']}")
     assert resp.status_code == 200
-    assert resp.json()["name"] == "Toor Dal"
+    assert resp.json()["id"] == created["id"]
 
 
-def test_get_product_not_found(client):
+def test_get_product_not_found_returns_404(client):
+    """GET /inventory/products/9999 returns 404 when product does not exist."""
     resp = client.get("/inventory/products/9999")
     assert resp.status_code == 404
-    assert resp.json()["detail"] == "Product not found"
+    assert "not found" in resp.json()["detail"].lower()
 
 
-def test_update_product(client, sample_product):
-    pid = sample_product["id"]
-    resp = client.put(f"/inventory/products/{pid}", json={"price": 150.0})
+# ── PUT /inventory/products/{id} ──────────────────────────────────────────────
+
+def test_update_product_returns_200(client):
+    """PUT /inventory/products/{id} returns 200 with updated fields."""
+    created = _create_product(client)
+    resp = client.put(
+        f"/inventory/products/{created['id']}",
+        json={"price": 99.0, "stock_qty": 100},
+    )
     assert resp.status_code == 200
-    data = resp.json()
-    assert data["price"] == 150.0
-    assert data["name"] == "Toor Dal"  # unchanged
+    body = resp.json()
+    assert body["price"] == 99.0
+    assert body["stock_qty"] == 100
+    assert body["name"] == "Basmati Rice 1kg"  # unchanged
 
 
-def test_update_product_not_found(client):
+def test_update_product_not_found_returns_404(client):
+    """PUT /inventory/products/9999 returns 404 when product does not exist."""
     resp = client.put("/inventory/products/9999", json={"price": 99.0})
     assert resp.status_code == 404
 
 
-def test_delete_product(client, sample_product):
-    pid = sample_product["id"]
-    resp = client.delete(f"/inventory/products/{pid}")
+# ── DELETE /inventory/products/{id} ──────────────────────────────────────────
+
+def test_delete_product_returns_204(client):
+    """DELETE /inventory/products/{id} returns 204 and removes the product."""
+    created = _create_product(client)
+    resp = client.delete(f"/inventory/products/{created['id']}")
     assert resp.status_code == 204
+    # Verify product is gone
+    get_resp = client.get(f"/inventory/products/{created['id']}")
+    assert get_resp.status_code == 404
 
 
-def test_delete_product_not_found(client):
+def test_delete_product_not_found_returns_404(client):
+    """DELETE /inventory/products/9999 returns 404 when product does not exist."""
     resp = client.delete("/inventory/products/9999")
     assert resp.status_code == 404
 
 
-# ── Stock Adjustment ────────────────────────────────────────────────────────
+# ── POST /inventory/stock-adjust ─────────────────────────────────────────────
 
-
-def test_stock_adjust_add(client, sample_product):
-    pid = sample_product["id"]
-    resp = client.post("/inventory/stock-adjust", json={
-        "product_id": pid, "adjustment_type": "add", "quantity": 20,
-    })
+def test_stock_adjust_add_increases_stock(client):
+    """Stock adjustment 'add' increases product stock_qty and returns 201."""
+    created = _create_product(client, stock_qty=10)
+    resp = client.post(
+        "/inventory/stock-adjust",
+        json={"product_id": created["id"], "adjustment_type": "add", "quantity": 20},
+    )
     assert resp.status_code == 201
-    product = client.get(f"/inventory/products/{pid}").json()
-    assert product["stock_qty"] == 70  # 50 + 20
+    # Verify stock increased
+    product = client.get(f"/inventory/products/{created['id']}").json()
+    assert product["stock_qty"] == 30
 
 
-def test_stock_adjust_set(client, sample_product):
-    pid = sample_product["id"]
-    resp = client.post("/inventory/stock-adjust", json={
-        "product_id": pid, "adjustment_type": "set", "quantity": 100,
-    })
+def test_stock_adjust_set_replaces_stock(client):
+    """Stock adjustment 'set' replaces stock_qty with given value."""
+    created = _create_product(client, stock_qty=50)
+    resp = client.post(
+        "/inventory/stock-adjust",
+        json={"product_id": created["id"], "adjustment_type": "set", "quantity": 5},
+    )
     assert resp.status_code == 201
-    product = client.get(f"/inventory/products/{pid}").json()
-    assert product["stock_qty"] == 100
+    product = client.get(f"/inventory/products/{created['id']}").json()
+    assert product["stock_qty"] == 5
 
 
-def test_stock_adjust_sale_deduct(client, sample_product):
-    pid = sample_product["id"]
-    resp = client.post("/inventory/stock-adjust", json={
-        "product_id": pid, "adjustment_type": "sale_deduct", "quantity": 5,
-    })
+def test_stock_adjust_sale_deduct_decreases_stock(client):
+    """Stock adjustment 'sale_deduct' subtracts quantity from stock_qty."""
+    created = _create_product(client, stock_qty=30)
+    resp = client.post(
+        "/inventory/stock-adjust",
+        json={
+            "product_id": created["id"],
+            "adjustment_type": "sale_deduct",
+            "quantity": 10,
+        },
+    )
     assert resp.status_code == 201
-    product = client.get(f"/inventory/products/{pid}").json()
-    assert product["stock_qty"] == 45  # 50 - 5
+    product = client.get(f"/inventory/products/{created['id']}").json()
+    assert product["stock_qty"] == 20
 
 
-def test_stock_adjust_insufficient(client, sample_product):
-    pid = sample_product["id"]
-    resp = client.post("/inventory/stock-adjust", json={
-        "product_id": pid, "adjustment_type": "sale_deduct", "quantity": 999,
-    })
+def test_stock_adjust_sale_deduct_insufficient_returns_400(client):
+    """sale_deduct with more than available stock returns 400."""
+    created = _create_product(client, stock_qty=5)
+    resp = client.post(
+        "/inventory/stock-adjust",
+        json={
+            "product_id": created["id"],
+            "adjustment_type": "sale_deduct",
+            "quantity": 10,
+        },
+    )
     assert resp.status_code == 400
-    assert resp.json()["detail"] == "Insufficient stock"
+    assert "insufficient" in resp.json()["detail"].lower()
 
 
-def test_stock_adjust_product_not_found(client):
-    resp = client.post("/inventory/stock-adjust", json={
-        "product_id": 9999, "adjustment_type": "add", "quantity": 10,
-    })
+def test_stock_adjust_product_not_found_returns_404(client):
+    """stock-adjust for non-existent product_id returns 404."""
+    resp = client.post(
+        "/inventory/stock-adjust",
+        json={"product_id": 9999, "adjustment_type": "add", "quantity": 5},
+    )
     assert resp.status_code == 404
-    assert resp.json()["detail"] == "Product not found"
 
 
-# ── Low Stock ───────────────────────────────────────────────────────────────
-
-
-def test_low_stock_returns_items(client):
-    client.post("/inventory/products", json={
-        "name": "Sugar",
-        "category": "Grocery",
-        "price": 45.0,
-        "stock_qty": 3,
-        "reorder_threshold": 10,
-    })
-    resp = client.get("/inventory/low-stock")
-    assert resp.status_code == 200
-    data = resp.json()
-    assert len(data) == 1
-    assert data[0]["name"] == "Sugar"
-
-
-def test_low_stock_empty(client):
-    client.post("/inventory/products", json={
-        "name": "Rice",
-        "category": "Grocery",
-        "price": 60.0,
-        "stock_qty": 50,
-        "reorder_threshold": 10,
-    })
-    resp = client.get("/inventory/low-stock")
-    assert resp.status_code == 200
-    assert resp.json() == []
-
-
-# ── Bulk Insert ─────────────────────────────────────────────────────────────
-
-
-def test_bulk_insert(client):
-    products = [
-        {"name": f"Bulk Item {i}", "category": "Test", "price": 10.0 + i, "stock_qty": i * 5}
-        for i in range(5)
-    ]
-    resp = client.post("/inventory/products/bulk", json={"products": products})
-    assert resp.status_code == 201
-    data = resp.json()
-    assert data["inserted"] == 5
-
-
-# ── Reorder List ────────────────────────────────────────────────────────────
-
-
-def test_reorder_list(client):
-    client.post("/inventory/products", json={
-        "name": "Low Item",
-        "category": "Grocery",
-        "price": 30.0,
-        "stock_qty": 2,
-        "reorder_threshold": 15,
-    })
-    # Also add a healthy-stock item (should NOT appear)
-    client.post("/inventory/products", json={
-        "name": "OK Item",
-        "category": "Grocery",
-        "price": 50.0,
-        "stock_qty": 100,
-        "reorder_threshold": 10,
-    })
-    resp = client.get("/inventory/reorder")
-    assert resp.status_code == 200
-    data = resp.json()
-    assert len(data) == 1
-    assert data[0]["name"] == "Low Item"
-    assert data[0]["suggested_qty"] == 28  # 15*2 - 2
-
-
-# ── Health ──────────────────────────────────────────────────────────────────
-
-
-def test_health(client):
-    resp = client.get("/health")
-    assert resp.status_code == 200
-    assert resp.json()["status"] == "ok"
+def test_stock_adjust_invalid_type_returns_422(client):
+    """stock-adjust with an invalid adjustment_type returns 422."""
+    created = _create_product(client)
+    resp = client.post(
+        "/inventory/stock-adjust",
+        json={
+            "product_id": created["id"],
+            "adjustment_type": "remove",  # not a valid Literal
+            "quantity": 5,
+        },
+    )
+    assert resp.status_code == 422

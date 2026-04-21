@@ -1,5 +1,5 @@
 """
-Pytest configuration and fixtures for inventory-service.
+Pytest configuration and fixtures for catalog-service.
 """
 import sys
 import os
@@ -27,6 +27,7 @@ _db_module.SessionLocal = _TestSessionLocal
 
 from main import app  # noqa: E402
 from database import get_db, Base  # noqa: E402
+from models import Product  # noqa: E402
 
 
 @pytest.fixture()
@@ -46,3 +47,18 @@ def client():
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()
+
+
+@pytest.fixture()
+def seeded_client(client):
+    """Return a client with two products pre-seeded in the database."""
+    db = _TestSessionLocal()
+    db.add_all([
+        Product(name="Basmati Rice 1kg", category="Grains", price=85.0,
+                stock_qty=50, reorder_threshold=10, image_url="", created_at=None),
+        Product(name="Toor Dal 500g", category="Pulses", price=65.0,
+                stock_qty=30, reorder_threshold=8, image_url="", created_at=None),
+    ])
+    db.commit()
+    db.close()
+    return client

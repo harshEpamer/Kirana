@@ -1,5 +1,7 @@
 """
-Pytest configuration and fixtures for inventory-service.
+Pytest configuration and fixtures for auth-service.
+Patches the database module to use an in-memory SQLite before importing the app,
+so no real kirana.db is touched during tests.
 """
 import sys
 import os
@@ -10,10 +12,12 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 from fastapi.testclient import TestClient
 
+# ── 1. Put the service directory on sys.path FIRST ──────────────────────────
 SERVICE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if SERVICE_DIR not in sys.path:
     sys.path.insert(0, SERVICE_DIR)
 
+# ── 2. Patch database module before importing main.py ───────────────────────
 import database as _db_module  # noqa: E402
 
 _TEST_ENGINE = create_engine(
@@ -25,6 +29,7 @@ _TestSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=_TEST_E
 _db_module.engine = _TEST_ENGINE
 _db_module.SessionLocal = _TestSessionLocal
 
+# ── 3. Import the app (main.py runs Base.metadata.create_all on TEST_ENGINE) ─
 from main import app  # noqa: E402
 from database import get_db, Base  # noqa: E402
 
