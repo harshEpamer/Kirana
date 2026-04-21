@@ -15,6 +15,9 @@ SECRET_KEY = os.getenv("JWT_SECRET", "kirana-secret-key-change-in-production")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24
 
+# Admin is identified by this phone (see seed-data.py)
+ADMIN_PHONE = "9999900001"
+
 pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
@@ -53,8 +56,16 @@ def login(credentials: UserLogin, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.phone == credentials.phone).first()
     if not user or not _verify(credentials.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid phone or password")
-    token = _create_token({"sub": str(user.id), "phone": user.phone})
-    return {"access_token": token, "token_type": "bearer"}
+    role = "admin" if user.phone == ADMIN_PHONE else "user"
+    token = _create_token({"sub": str(user.id), "phone": user.phone, "role": role})
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "user_id": user.id,
+        "name": user.name,
+        "phone": user.phone,
+        "role": role,
+    }
 
 
 @router.get("/me", response_model=UserOut)

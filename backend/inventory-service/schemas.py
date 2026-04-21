@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional, Literal
+from typing import Optional, Literal, List
 
 
 class ProductCreate(BaseModel):
@@ -40,6 +40,11 @@ class StockAdjustRequest(BaseModel):
     quantity: int
 
 
+class StockPatchRequest(BaseModel):
+    adjustment_type: Literal["add", "set", "sale_deduct"]
+    quantity: int
+
+
 class StockAdjustOut(BaseModel):
     id: int
     product_id: int
@@ -49,3 +54,21 @@ class StockAdjustOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class BulkImportRequest(BaseModel):
+    products: List[ProductCreate]
+
+
+class BulkImportResponse(BaseModel):
+    inserted: int
+
+
+class StockLogEntry(BaseModel):
+    id: int
+    product_id: int
+    product_name: str
+    adjustment_type: str
+    quantity: int
+    adjusted_at: Optional[str]
+

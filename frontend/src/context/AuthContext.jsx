@@ -1,11 +1,18 @@
 import { createContext, useContext, useState, useEffect } from 'react'
-import { API, TOKEN_KEY } from '../config'
+import { API, TOKEN_KEY, USER_KEY } from '../config'
 
 const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null)
   const [token, setToken] = useState(() => localStorage.getItem(TOKEN_KEY))
+  const [user, setUser]   = useState(() => {
+    try {
+      const raw = localStorage.getItem(USER_KEY)
+      return raw ? JSON.parse(raw) : null
+    } catch {
+      return null
+    }
+  })
 
   const login = async (phone, password) => {
     const res = await fetch(`${API.auth}/auth/login`, {
@@ -15,8 +22,17 @@ export function AuthProvider({ children }) {
     })
     if (!res.ok) throw new Error((await res.json()).detail || 'Login failed')
     const data = await res.json()
+    const userObj = {
+      id:    data.user_id,
+      name:  data.name,
+      phone: data.phone,
+      role:  data.role,
+    }
     localStorage.setItem(TOKEN_KEY, data.access_token)
+    localStorage.setItem(USER_KEY, JSON.stringify(userObj))
     setToken(data.access_token)
+    setUser(userObj)
+    return userObj
   }
 
   const register = async (name, phone, address, password) => {
@@ -31,12 +47,15 @@ export function AuthProvider({ children }) {
 
   const logout = () => {
     localStorage.removeItem(TOKEN_KEY)
+    localStorage.removeItem(USER_KEY)
     setToken(null)
     setUser(null)
   }
 
+  const isAdmin = user?.role === 'admin'
+
   return (
-    <AuthContext.Provider value={{ user, token, login, register, logout }}>
+    <AuthContext.Provider value={{ user, token, isAdmin, login, register, logout }}>
       {children}
     </AuthContext.Provider>
   )

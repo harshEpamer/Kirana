@@ -17,6 +17,10 @@ class UserLogin(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
+    user_id: int
+    name: str
+    phone: str
+    role: str = "user"  # "admin" or "user"
 
 
 class UserOut(BaseModel):
