@@ -1,0 +1,138 @@
+PROJECT: Kirana Store
+DOMAIN: Local Kirana Retail Management — Inventory, Sales, Catalog, Orders, Coupons, Alerts, Customers
+DATE INITIALIZED: 2026-04-21
+HACKATHON: Gen AI Kata | No-Human Code Sprint | GitHub Copilot Agents Only
+
+## Purpose
+A full-stack microservices application for managing a local kirana (grocery) store.
+Covers product catalog, inventory management, sales processing, coupon handling, low-stock alerts,
+and customer purchase history. Built as a 2-hour hackathon sprint with one agent per microservice.
+
+## Tech Stack
+- Language(s): Python 3.11+ (backend), JavaScript/JSX (frontend)
+- Framework(s): FastAPI (backend), React 18 via Vite (frontend)
+- Database: SQLite3 via SQLAlchemy (single shared file: kirana.db at project root)
+- Auth: JWT — python-jose + passlib[bcrypt]; token stored in localStorage as `kirana_token`
+- Styling: Tailwind CSS
+- Routing: React Router v6
+- HTTP Client: Native fetch API (no axios)
+
+## Microservices — Ports
+| Service           | Port | Owner              |
+|-------------------|------|--------------------|
+| auth-service      | 8001 | Aryen Garg         |
+| inventory-service | 8002 | Pratyush Ojha      |
+| catalog-service   | 8003 | Harshvardhan Singh |
+| sales-service     | 8004 | Sanidhya Shandilya |
+| order-service     | 8005 | Atharv Singh       |
+| coupon-service    | 8006 | Atharv Singh       |
+| alert-service     | 8007 | Om Satyam Panda    |
+| customer-service  | 8008 | Aryen Garg         |
+| Frontend (React)  | 5173 | Harshvardhan Singh |
+
+## Directory Structure
+kirana-store/
+├── backend/
+│   ├── auth-service/       → User registration, login, JWT issuance (port 8001)
+│   ├── inventory-service/  → Product CRUD + stock adjustment (port 8002)
+│   ├── catalog-service/    → Read-only product browsing with filters (port 8003)
+│   ├── sales-service/      → Create & retrieve sales transactions (port 8004)
+│   ├── order-service/      → Checkout orchestration + order creation (port 8005)
+│   ├── coupon-service/     → Coupon CRUD + coupon validation (port 8006)
+│   ├── alert-service/      → Low-stock alerts + reorder recommendations (port 8007)
+│   └── customer-service/   → Customer profiles + purchase history (port 8008)
+├── frontend/
+│   ├── index.html
+│   ├── package.json
+│   ├── vite.config.js
+│   ├── tailwind.config.js
+│   └── src/
+│       ├── main.jsx         → React entry point
+│       ├── App.jsx          → Router root
+│       ├── config.js        → Base URLs for all 8 services
+│       ├── api/             → One file per service (authApi.js, catalogApi.js, ...)
+│       ├── context/         → AuthContext.jsx, CartContext.jsx
+│       ├── pages/           → LoginPage, RegisterPage, CatalogPage, CartPage, AdminDashboard, InventoryPage
+│       └── components/      → Navbar, ProductCard
+├── db/
+│   └── schema.sql           → Full DDL + seed data for kirana.db
+├── docs/
+│   └── architecture.md      → Service diagram, data flow, API contract overview
+├── scripts/
+│   ├── init-db.py           → Run once to initialize kirana.db from schema.sql
+│   └── start-all.ps1        → PowerShell script to start all 8 services in parallel
+├── requirements.txt         → Root-level combined Python dependencies
+├── context.txt              → This file — read by all agents before building
+└── .github/
+    ├── agents/
+    │   └── project-setup.agent.md
+    └── instructions/
+        └── conventions.instructions.md
+
+## Key Modules / Features
+1. Authentication — register with phone+password, login returns JWT, token verified by all services
+2. Catalog — browse products by category, search by name, product detail view
+3. Inventory — admin CRUD for products, bulk stock adjustments (add/set/sale_deduct)
+4. Sales — record a sale with items, apply coupon discount, auto-deduct stock
+5. Orders — checkout flow: validate cart + coupon → create sale → return receipt
+6. Coupons — two types: order_wise (% or flat off total), product_wise (discount on specific product)
+7. Alerts — detect products where stock_qty < reorder_threshold, surface to admin dashboard
+8. Customers — list customers, view purchase history per customer
+
+## Database
+- Single SQLite file: `kirana.db` at project root
+- All services connect via `DATABASE_URL = "sqlite:///../../kirana.db"` (relative from service folder)
+- Tables: users, products, sales, sale_items, purchase_history, coupons, stock_adjustments
+- Schema + seed data: db/schema.sql
+- Initialize: `python scripts/init-db.py`
+
+## Non-Functional Requirements
+- CORS: all services allow origin http://localhost:5173
+- All responses: JSON with correct HTTP codes (200, 201, 400, 401, 404)
+- Auth: JWT HS256, 24-hour expiry, SECRET_KEY env var (default: kirana-secret-key-change-in-production)
+- Follows SOLID, KISS, DRY, YAGNI
+- No Docker required for hackathon; all services run locally
+
+## External Services / Integrations
+- None — fully local, no external APIs
+
+## Conventions
+### Backend
+- Entry point: main.py, `app = FastAPI(title="<service-name>")`
+- Run: `uvicorn main:app --reload --port <PORT>` (from within service directory)
+- DB path from service: `../../kirana.db`
+- All routers use prefix e.g. `/auth`, `/inventory`, `/catalog`
+- Health check at `GET /health` on every service
+- requirements.txt in each service folder: fastapi uvicorn[standard] sqlalchemy python-jose[cryptography] passlib[bcrypt] python-multipart
+
+### Frontend
+- JWT token: localStorage key `kirana_token`
+- Authenticated requests: header `Authorization: Bearer <token>`
+- All API base URLs in `src/config.js`
+- Components: functional + hooks only (no class components)
+- Forms: controlled via useState
+
+### Git
+- main branch: protected — merged by Pranav only
+- Branch per feature: feature/S-01, feature/U-01 ... feature/A-03
+- One service per branch per owner
+
+## Git Branch → Owner Mapping
+| Branch        | Owner              | Scope                                  |
+|---------------|--------------------|----------------------------------------|
+| feature/S-01  | Pranav             | Scaffold + schema + architecture       |
+| feature/U-01  | Aryen Garg         | auth-service + frontend auth pages     |
+| feature/U-02  | Aryen Garg         | customer-service + purchase history    |
+| feature/U-03  | Atharv Singh       | order-service + checkout page          |
+| feature/U-04  | Atharv Singh       | coupon-service + coupon component      |
+| feature/U-05  | Harshvardhan Singh | catalog-service + catalog page         |
+| feature/U-06  | Harshvardhan Singh | cart context + navbar                  |
+| feature/A-01  | Om Satyam Panda    | alert-service + admin dashboard        |
+| feature/A-02  | Om Satyam Panda    | low stock alerts + reorder page        |
+| feature/A-03  | Pratyush Ojha      | inventory-service CRUD + bulk import   |
+
+## Open Decisions
+- Payment integration: not in scope for hackathon
+- Deployment: local only for now; Dockerization is post-hackathon
+- Rate limiting / input sanitization: basic validation via Pydantic only
+- Image storage for products: image_url column exists but no file upload endpoint yet

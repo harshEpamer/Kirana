@@ -1,0 +1,51 @@
+from pydantic import BaseModel
+from typing import Optional, Literal
+
+
+class ProductCreate(BaseModel):
+    name: str
+    category: str
+    price: float
+    stock_qty: int = 0
+    reorder_threshold: int = 10
+    image_url: str = ""
+
+
+class ProductUpdate(BaseModel):
+    name: Optional[str] = None
+    category: Optional[str] = None
+    price: Optional[float] = None
+    stock_qty: Optional[int] = None
+    reorder_threshold: Optional[int] = None
+    image_url: Optional[str] = None
+
+
+class ProductOut(BaseModel):
+    id: int
+    name: str
+    category: str
+    price: float
+    stock_qty: int
+    reorder_threshold: int
+    image_url: str
+    created_at: Optional[str]
+
+    class Config:
+        from_attributes = True
+
+
+class StockAdjustRequest(BaseModel):
+    product_id: int
+    adjustment_type: Literal["add", "set", "sale_deduct"]
+    quantity: int
+
+
+class StockAdjustOut(BaseModel):
+    id: int
+    product_id: int
+    adjustment_type: str
+    quantity: int
+    adjusted_at: Optional[str]
+
+    class Config:
+        from_attributes = True
