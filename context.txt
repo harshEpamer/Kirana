@@ -130,9 +130,150 @@ kirana-store/
 | feature/A-01  | Om Satyam Panda    | alert-service + admin dashboard        |
 | feature/A-02  | Om Satyam Panda    | low stock alerts + reorder page        |
 | feature/A-03  | Pratyush Ojha      | inventory-service CRUD + bulk import   |
+| feature/A-05  | Sanidhya Shandilya | sales-service + admin sales page       |
 
 ## Open Decisions
 - Payment integration: not in scope for hackathon
 - Deployment: local only for now; Dockerization is post-hackathon
 - Rate limiting / input sanitization: basic validation via Pydantic only
 - Image storage for products: image_url column exists but no file upload endpoint yet
+
+---
+
+## A-05: Sales Service + Admin Sales Page — Agent Build Log
+> Owner: Sanidhya Shandilya | Branch: feature/A-05 | Agent: Sales Service Milestone Agent
+> Built: 2026-04-21 | Status: COMPLETE
+
+### Files Created / Modified
+
+#### backend/sales-service/database.py (unchanged — already correct)
+- SQLAlchemy engine: sqlite:///../../kirana.db
+- SessionLocal factory, Base declarative base, get_db() dependency
+
+#### backend/sales-service/models.py (rewritten)
+- User: id, name, phone, address, password_hash, created_at → relationship to Sale
+- Product: id, name, category, price, stock_qty, reorder_threshold, image_url, created_at → relationship to SaleItem
+- Sale: id, user_id (FK users.id), total_amount, discount_amount, final_amount, coupon_code, sale_time → relationships to User, SaleItem
+- SaleItem: id, sale_id (FK sales.id), product_id (FK products.id), quantity, unit_price → relationships to Sale, Product
+
+#### backend/sales-service/schemas.py (rewritten)
+- SaleItemOut: product_name (str), quantity (int), unit_price (float)
+- SaleOut: id, customer_name, customer_phone, items (List[SaleItemOut]), total_amount, discount_amount, final_amount, coupon_code, sale_time
+- SalesSummary: today_revenue (float), today_orders (int), top_product_name (Optional[str]), top_product_qty (int, default 0)
+
+#### backend/sales-service/routers/sales.py (rewritten)
+- Router prefix: /api/sales
+- GET / — query param: date (YYYY-MM-DD, default today), returns List[SaleOut]
+  - Uses func.date(Sale.sale_time) for SQLite date filtering
+  - Uses joinedload for Sale.user, Sale.items → SaleItem.product (avoids N+1)
+  - Explicit ORM → Pydantic conversion (no raw model return)
+- GET /summary — returns SalesSummary
+  - today_revenue: func.coalesce(func.sum(Sale.final_amount), 0.0)
+  - today_orders: func.count(Sale.id)
+  - top_product: group_by Product.id, order_by sum(quantity) desc, first()
+  - Null-safe: returns None/0 when no sales exist
+
+#### backend/sales-service/main.py (unchanged)
+- FastAPI app, CORS for http://localhost:5173, includes sales router, /health endpoint
+
+#### backend/sales-service/requirements.txt (updated)
+- fastapi, uvicorn, sqlalchemy (ticket-specific deps only)
+
+#### frontend/src/api/salesApi.js (rewritten)
+- Uses axios (added to package.json)
+- getSalesByDate(date, token) → GET http://localhost:8004/api/sales/?date=YYYY-MM-DD
+- getSalesSummary(token) → GET http://localhost:8004/api/sales/summary
+
+#### frontend/src/pages/AdminSales.jsx (created)
+- Date picker input (default today)
+- Summary strip: 3 stat cards (Today's Revenue ₹, Orders, Top Selling Product)
+- Sales table: Time | Customer | Items (comma-separated) | Total | Discount | Final Amount
+- Empty state: "No sales recorded for this date"
+- Loading state, error state with graceful degradation
+- Auto-fetch via useEffect on date change
+
+#### frontend/package.json (updated)
+- Added axios ^1.7.2 to dependencies
+
+### API Contract
+
+| Endpoint | Method | Params | Response |
+|---|---|---|---|
+| /api/sales/ | GET | ?date=YYYY-MM-DD | List[SaleOut] |
+| /api/sales/summary | GET | — | SalesSummary |
+| /health | GET | — | {status, service, port} |
+
+### Frontend ↔ Backend Field Map
+
+SaleOut fields used in AdminSales.jsx:
+- id → table row key
+- customer_name → Customer column (fallback: "Guest")
+- customer_phone → Customer column (parenthesized)
+- items[].product_name → Items column (comma-joined)
+- total_amount → Total column
+- discount_amount → Discount column
+- final_amount → Final Amount column
+- sale_time → Time column (toLocaleTimeString)
+
+SalesSummary fields used in AdminSales.jsx:
+- today_revenue → Revenue card
+- today_orders → Orders card
+- top_product_name → Top Product card (fallback: "—")
+- top_product_qty → Top Product sub-label
+
+### Run Command
+```
+cd backend/sales-service
+pip install -r requirements.txt
+uvicorn main:app --reload --port 8004
+```
+
+---
+
+## A-06: Admin Customer Management Page — Agent Build Log
+> Owner: Sanidhya Shandilya | Branch: feature/A-06 | Agent: Customer Management UI Agent
+> Built: 2026-04-21 | Status: COMPLETE
+
+### Files Created / Modified
+
+#### frontend/src/api/customersApi.js (rewritten)
+- Switched from native fetch to axios
+- getAllCustomers(token) → GET http://localhost:8008/api/customers
+- getCustomerHistory(userId, token) → GET http://localhost:8008/api/customers/{userId}/history
+- Authorization header included when token is provided
+
+#### frontend/src/pages/AdminCustomers.jsx (created)
+- On mount: fetches all customers via getAllCustomers
+- Customer table columns: Name | Phone | Address | Total Orders | Total Spent (₹) | Actions
+- "View History" button expands inline accordion sub-row
+- Single-expand: only one customer row open at a time
+- Toggle collapse on re-click, auto-collapse previous on switch
+- Lazy loading: history fetched only when row is first expanded
+- History cached per customer id (never refetched)
+- History table columns: Date | Items (comma-separated) | Total | Discount | Final Amount | Coupon Used
+- Empty state: "No purchase history"
+- Loading indicators: customer list on mount, history inside expanded row
+- Error handling: graceful degradation on API failure
+
+### Data Contract (consumed from customer-service port 8008)
+
+CustomerSummary fields:
+- id → table row key + expand toggle
+- name → Name column
+- phone → Phone column
+- address → Address column
+- total_orders → Total Orders column
+- total_spent → Total Spent column (₹, 2 decimal places)
+
+PurchaseRecord fields:
+- date → Date column (fallback: "—")
+- items → Items column (array, comma-joined)
+- total → Total column (₹)
+- discount → Discount column (₹)
+- final_amount → Final Amount column (₹)
+- coupon_used → Coupon Used column (fallback: "—")
+
+### UI Behavior
+- Single-expand accordion (one row at a time)
+- History cached per customer — no redundant API calls
+- Null-safe rendering on all fields

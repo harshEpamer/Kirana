@@ -1,77 +1,91 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
-from typing import List
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import func
+from typing import List, Optional
 from datetime import datetime
 
 from database import get_db
 from models import Sale, SaleItem, Product
-from schemas import SaleCreate, SaleOut, SaleItemOut
+from schemas import SaleOut, SaleItemOut, SalesSummary
 
-router = APIRouter(prefix="/sales", tags=["sales"])
+router = APIRouter(prefix="/api/sales", tags=["sales"])
 
 
 @router.get("/", response_model=List[SaleOut])
-def list_sales(db: Session = Depends(get_db)):
-    sales = db.query(Sale).order_by(Sale.id.desc()).all()
+def get_sales_by_date(
+    date: Optional[str] = Query(default=None, description="YYYY-MM-DD, defaults to today"),
+    db: Session = Depends(get_db),
+):
+    target_date = date or datetime.utcnow().strftime("%Y-%m-%d")
+
+    sales = (
+        db.query(Sale)
+        .options(
+            joinedload(Sale.user),
+            joinedload(Sale.items).joinedload(SaleItem.product),
+        )
+        .filter(func.date(Sale.sale_time) == target_date)
+        .order_by(Sale.sale_time.desc())
+        .all()
+    )
+
     result = []
     for sale in sales:
-        items = db.query(SaleItem).filter(SaleItem.sale_id == sale.id).all()
-        out = SaleOut.model_validate(sale)
-        out.items = [SaleItemOut.model_validate(i) for i in items]
-        result.append(out)
+        items_out = [
+            SaleItemOut(
+                product_name=item.product.name if item.product else "Unknown",
+                quantity=item.quantity,
+                unit_price=item.unit_price,
+            )
+            for item in sale.items
+        ]
+        result.append(SaleOut(
+            id=sale.id,
+            customer_name=sale.user.name if sale.user else None,
+            customer_phone=sale.user.phone if sale.user else None,
+            items=items_out,
+            total_amount=sale.total_amount,
+            discount_amount=sale.discount_amount,
+            final_amount=sale.final_amount,
+            coupon_code=sale.coupon_code,
+            sale_time=sale.sale_time,
+        ))
+
     return result
 
 
-@router.get("/{sale_id}", response_model=SaleOut)
-def get_sale(sale_id: int, db: Session = Depends(get_db)):
-    sale = db.query(Sale).filter(Sale.id == sale_id).first()
-    if not sale:
-        raise HTTPException(status_code=404, detail="Sale not found")
-    items = db.query(SaleItem).filter(SaleItem.sale_id == sale.id).all()
-    out = SaleOut.model_validate(sale)
-    out.items = [SaleItemOut.model_validate(i) for i in items]
-    return out
+@router.get("/summary", response_model=SalesSummary)
+def get_sales_summary(db: Session = Depends(get_db)):
+    today = datetime.utcnow().strftime("%Y-%m-%d")
 
-
-@router.post("/", response_model=SaleOut, status_code=201)
-def create_sale(sale_in: SaleCreate, db: Session = Depends(get_db)):
-    total = 0.0
-    line_items = []
-
-    for item in sale_in.items:
-        product = db.query(Product).filter(Product.id == item.product_id).first()
-        if not product:
-            raise HTTPException(status_code=404, detail=f"Product {item.product_id} not found")
-        if product.stock_qty < item.quantity:
-            raise HTTPException(status_code=400, detail=f"Insufficient stock for product {item.product_id}")
-        line_items.append((product, item.quantity))
-        total += product.price * item.quantity
-
-    discount = 0.0
-    # Coupon validation is handled by order-service before calling this endpoint.
-    # coupon_code is recorded here for receipt purposes only.
-
-    final = total - discount
-    sale = Sale(
-        user_id=sale_in.user_id,
-        total_amount=round(total, 2),
-        discount_amount=round(discount, 2),
-        final_amount=round(final, 2),
-        coupon_code=sale_in.coupon_code,
-        sale_time=datetime.utcnow().isoformat(),
+    revenue = (
+        db.query(func.coalesce(func.sum(Sale.final_amount), 0.0))
+        .filter(func.date(Sale.sale_time) == today)
+        .scalar()
     )
-    db.add(sale)
-    db.flush()  # get sale.id without committing
 
-    items_out = []
-    for product, qty in line_items:
-        si = SaleItem(sale_id=sale.id, product_id=product.id, quantity=qty, unit_price=product.price)
-        db.add(si)
-        product.stock_qty -= qty
-        items_out.append(si)
+    orders_count = (
+        db.query(func.count(Sale.id))
+        .filter(func.date(Sale.sale_time) == today)
+        .scalar()
+    )
 
-    db.commit()
-    db.refresh(sale)
-    out = SaleOut.model_validate(sale)
-    out.items = [SaleItemOut.model_validate(i) for i in items_out]
-    return out
+    top_product_row = (
+        db.query(
+            Product.name,
+            func.sum(SaleItem.quantity).label("total_qty"),
+        )
+        .join(SaleItem, SaleItem.product_id == Product.id)
+        .join(Sale, Sale.id == SaleItem.sale_id)
+        .filter(func.date(Sale.sale_time) == today)
+        .group_by(Product.id)
+        .order_by(func.sum(SaleItem.quantity).desc())
+        .first()
+    )
+
+    return SalesSummary(
+        today_revenue=round(float(revenue), 2),
+        today_orders=orders_count or 0,
+        top_product_name=top_product_row[0] if top_product_row else None,
+        top_product_qty=int(top_product_row[1]) if top_product_row else 0,
+    )

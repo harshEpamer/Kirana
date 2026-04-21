@@ -2,20 +2,8 @@ from pydantic import BaseModel
 from typing import List, Optional
 
 
-class SaleItemIn(BaseModel):
-    product_id: int
-    quantity: int
-
-
-class SaleCreate(BaseModel):
-    user_id: Optional[int] = None
-    items: List[SaleItemIn]
-    coupon_code: Optional[str] = None
-
-
 class SaleItemOut(BaseModel):
-    id: int
-    product_id: int
+    product_name: str
     quantity: int
     unit_price: float
 
@@ -25,13 +13,21 @@ class SaleItemOut(BaseModel):
 
 class SaleOut(BaseModel):
     id: int
-    user_id: Optional[int]
+    customer_name: Optional[str] = None
+    customer_phone: Optional[str] = None
+    items: List[SaleItemOut] = []
     total_amount: float
     discount_amount: float
     final_amount: float
-    coupon_code: Optional[str]
-    sale_time: Optional[str]
-    items: List[SaleItemOut] = []
+    coupon_code: Optional[str] = None
+    sale_time: Optional[str] = None
 
     class Config:
         from_attributes = True
+
+
+class SalesSummary(BaseModel):
+    today_revenue: float
+    today_orders: int
+    top_product_name: Optional[str] = None
+    top_product_qty: int = 0

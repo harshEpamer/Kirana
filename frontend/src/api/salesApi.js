@@ -1,11 +1,16 @@
-import { API, TOKEN_KEY } from '../config'
+import axios from "axios";
 
-const h = () => ({
-  'Content-Type': 'application/json',
-  Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY)}`,
-})
+const BASE_URL = "http://localhost:8004";
 
-export const listSales = () => fetch(`${API.sales}/sales/`, { headers: h() }).then(r => r.json())
-export const getSale   = (id) => fetch(`${API.sales}/sales/${id}`, { headers: h() }).then(r => r.json())
-export const createSale = (data) =>
-  fetch(`${API.sales}/sales/`, { method: 'POST', headers: h(), body: JSON.stringify(data) }).then(r => r.json())
+export const getSalesByDate = async (date, token) => {
+  const params = date ? { date } : {};
+  const headers = token ? { Authorization: `Bearer ${token}` } : {};
+  const res = await axios.get(`${BASE_URL}/api/sales/`, { params, headers });
+  return res.data;
+};
+
+export const getSalesSummary = async (token) => {
+  const headers = token ? { Authorization: `Bearer ${token}` } : {};
+  const res = await axios.get(`${BASE_URL}/api/sales/summary`, { headers });
+  return res.data;
+};
