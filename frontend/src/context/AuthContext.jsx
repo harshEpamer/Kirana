@@ -3,9 +3,31 @@ import { API, TOKEN_KEY } from '../config'
 
 const AuthContext = createContext(null)
 
+function decodeToken(token) {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]))
+    return payload
+  } catch {
+    return null
+  }
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [token, setToken] = useState(() => localStorage.getItem(TOKEN_KEY))
+
+  useEffect(() => {
+    if (token) {
+      const payload = decodeToken(token)
+      if (payload && payload.exp * 1000 > Date.now()) {
+        setUser({ id: Number(payload.sub), name: payload.name, phone: payload.phone })
+      } else {
+        localStorage.removeItem(TOKEN_KEY)
+        setToken(null)
+        setUser(null)
+      }
+    }
+  }, [])
 
   const login = async (phone, password) => {
     const res = await fetch(`${API.auth}/auth/login`, {
@@ -17,6 +39,7 @@ export function AuthProvider({ children }) {
     const data = await res.json()
     localStorage.setItem(TOKEN_KEY, data.access_token)
     setToken(data.access_token)
+    setUser({ id: data.user_id, name: data.name, role: data.role })
   }
 
   const register = async (name, phone, address, password) => {

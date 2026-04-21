@@ -136,3 +136,43 @@ kirana-store/
 - Deployment: local only for now; Dockerization is post-hackathon
 - Rate limiting / input sanitization: basic validation via Pydantic only
 - Image storage for products: image_url column exists but no file upload endpoint yet
+
+## Implementation Log
+
+### feature/U-01 — Auth Service + Frontend Auth Pages (Aryen Garg)
+**Backend (backend/auth-service/):**
+- `schemas.py` — Renamed UserCreate→UserRegister, Token→TokenResponse; added user_id, name, role fields to TokenResponse
+- `routers/auth.py` — Implemented GET /auth/me with Bearer token verification via HTTPBearer + jose jwt.decode; updated POST /login to return TokenResponse with user_id, name, role; added get_current_user dependency; JWT payload now includes name claim
+- All other files (database.py, models.py, main.py, requirements.txt) unchanged — scaffold was correct
+
+**Frontend:**
+- `src/context/AuthContext.jsx` — Added JWT decode on mount to restore user state (id, name, phone) from persisted token; login now sets user from API response (user_id, name, role); expired tokens are auto-cleared
+- `src/api/authApi.js` — Renamed exports to registerUser/loginUser; added getMe(token) function for GET /auth/me
+- `src/pages/LoginPage.jsx` — No changes needed (uses AuthContext.login which now sets user state)
+- `src/pages/RegisterPage.jsx` — No changes needed (uses AuthContext.register)
+
+### feature/U-02 — Customer Service + Purchase History (Aryen Garg)
+**Backend (backend/customer-service/):**
+- `models.py` — Added Product and SaleItem models; expanded Sale model with all columns (total_amount, discount_amount, coupon_code); added password_hash to User model for schema consistency
+- `schemas.py` — Replaced CustomerOut/PurchaseOut with CustomerSummary (includes total_orders, total_spent) and PurchaseRecord (includes items list with product_name, quantity, unit_price) + PurchaseItem
+- `routers/customers.py` — GET / now returns CustomerSummary with aggregated order count and total spent; GET /{user_id}/history returns PurchaseRecord with full item details joined from sale_items + products tables
+
+**Frontend:**
+- `src/api/customersApi.js` — Added getAllCustomers(token) and getCustomerHistory(userId, token) with explicit token param; kept backward-compatible aliases
+- `src/pages/PurchaseHistory.jsx` — New page; fetches user's purchase history on mount; renders expandable order cards with item table, totals, discount, coupon info; handles empty/loading/error states
+
+### feature/U-03 — Order Service + Checkout Page (Atharv Singh)
+**Backend (backend/order-service/):**
+- `models.py` — Added User, PurchaseHistory, StockAdjustment models; expanded Product with all columns (category, reorder_threshold, image_url); removed Coupon model (validation now done via coupon-service call)
+- `schemas.py` — Replaced OrderCreate/OrderOut with CheckoutRequest (user_id, cart, coupon_code) and CheckoutResponse (order_id, total_amount, discount_amount, final_amount, coupon_applied)
+- `routers/orders.py` — Full checkout orchestration: validates user + products + stock → calls coupon-service POST /coupons/validate via httpx → creates sale + sale_items → decrements stock_qty → inserts stock_adjustments (sale_deduct) → inserts purchase_history → calls alert-service GET /alerts/check/{product_id} (best-effort) → returns CheckoutResponse. Endpoint changed from POST /orders/ to POST /orders/checkout
+- `requirements.txt` — Added httpx>=0.27.0
+
+**Frontend:**
+- `src/api/ordersApi.js` — Added placeOrder(checkoutData, token) for POST /orders/checkout; kept backward-compatible checkout() alias
+- `src/pages/Checkout.jsx` — New page; reads cart from CartContext; displays item table, CouponInput component, totals; Place Order button calls placeOrder API; success shows confirmation with order_id; clears cart
+- `src/components/CouponInput.jsx` — New reusable component; controlled coupon code input with Apply button
+
+### Shared File Changes
+- `src/App.jsx` — Added routes: /checkout → Checkout, /history → PurchaseHistory; added imports
+- `src/components/Navbar.jsx` — Added Checkout and Orders links (visible when logged in); shows user name next to Logout
